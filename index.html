@@ -41,10 +41,11 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 .empty{color:var(--mu);text-align:center;padding:30px 10px}
 .hist{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
 svg text{fill:var(--mu);font-size:10px}
+.tw2{overflow-x:auto}table{border-collapse:collapse;font-size:13px;width:100%}th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:center;white-space:nowrap}th{color:var(--mu);font-weight:600}td:first-child{text-align:left;position:sticky;left:0;background:var(--card);white-space:normal;min-width:115px;max-width:135px}
 </style></head><body>
 <h1>Treino em V</h1><div class="sub" id="wk"></div>
 <div class="days" id="days"></div><div class="meta" style="margin:-4px 0 8px">Últimos 7 dias · ✓ treino finalizado · • em andamento</div>
-<div class="tabs"><button data-t="w" class="on">Treino</button><button data-t="p">Progresso</button></div>
+<div class="tabs"><button data-t="w" class="on">Treino</button><button data-t="c">Ciclo</button><button data-t="p">Progresso</button></div>
 <div id="main"></div>
 <div id="timer"><div class="tw"><div class="meta" id="tl"></div><div style="display:flex;justify-content:space-between;align-items:center"><span id="tt">0:00</span>
 <span style="display:flex;gap:6px"><button class="btn" id="m15">−15s</button><button class="btn" id="p15">+15s</button><button class="btn p" id="sk">Pular</button></span></div><div class="bar"><i id="tb"></i></div></div></div>
@@ -61,7 +62,7 @@ const W={
 const SEQ=[1,2,3,4,5,6],NM=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
 const WARM=["5–10 min de atividade leve","1–3 séries progressivas do 1º exercício pesado"];
 const KEY="treinoV1";
-let S={logs:{},body:[],start:null,wu:{},hist:{},fin:{},cur:null,mig:0};
+let S={logs:{},body:[],start:null,wu:{},hist:{},fin:{},cur:null,mig:0,cycles:[]};
 try{const x=localStorage.getItem(KEY);if(x)S=Object.assign(S,JSON.parse(x))}catch(e){}
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 const iso=d=>{const x=new Date(d);return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0")};
@@ -71,7 +72,7 @@ const dow=d=>new Date(d+"T12:00:00").getDay();
 if(!S.start)S.start=TODAY;
 if(!S.mig){Object.keys(S.logs).forEach(d=>{if(S.hist[d])return;const k=Object.keys(S.logs[d]).find(k=>S.logs[d][k]&&(S.logs[d][k].sets&&S.logs[d][k].sets.some(x=>x&&(x.done||x.w||x.r))||S.logs[d][k].cd));if(!k)return;const w=k=="cardio"?4:parseInt(k);if(W[w]){S.hist[d]=w;if(d<TODAY)S.fin[d]=true}});S.mig=1}
 save();
-let tab="w",pick=TODAY,T=null;
+let tab="w",pick=TODAY,T=null,cv=null;
 try{const t=JSON.parse(localStorage.getItem("treinoVT")||"null");if(t&&t.end>Date.now()-2e4)T=t}catch(e){}
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -83,19 +84,35 @@ function last(id){const ds=Object.keys(S.logs).filter(d=>d<S.cur.d&&S.logs[d][id
 function tip(l,max){if(!l)return"";const ds=l.sets.filter(s=>s&&s.done);return ds.length&&ds.every(s=>num(s.r)>=max)?"Bateu o topo da faixa: suba a carga hoje":""}
 function nextW(){const f=Object.keys(S.fin).filter(d=>S.fin[d]&&S.hist[d]).sort();if(!f.length)return SEQ[0];return SEQ[(SEQ.indexOf(S.hist[f.pop()])+1)%SEQ.length]}
 function strip(){let h="";for(let k=6;k>=0;k--){const d=iso(new Date(Date.now()-k*864e5)),w=S.hist[d];
- h+=`<button data-date="${d}" class="${S.cur&&S.cur.d==d?"on":""} ${d==TODAY?"today":""}"><div>${NM[dow(d)]}</div><div style="font-size:15px;font-weight:700">${d.slice(8)}</div><div>${S.fin[d]?"✓":w?"•":"·"}</div><div style="font-size:10px;overflow:hidden;white-space:nowrap">${w?W[w].s:"&nbsp;"}</div></button>`}return h}
+ h+=`<button data-date="${d}" class="${S.cur&&S.cur.d==d?"on":""} ${d==TODAY?"today":""}"><div>${NM[dow(d)]}</div><div style="font-size:15px;font-weight:700">${d.slice(8)}</div><div>${S.fin[d]?"✓":w?"•":"·"}</div><div style="font-size:11px;font-weight:600">${w?"T"+w:"&nbsp;"}</div></button>`}return h}
 function render(){
  const wk=Math.floor((new Date(TODAY)-new Date(S.start))/6048e5)+1;
  $("wk").textContent="Semana "+wk+" do ciclo de 6–8 semanas";
  $("days").innerHTML=strip();
  document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t==tab));
- $("main").innerHTML=tab=="w"?(S.cur?workout():home()):progress();
+ $("main").innerHTML=tab=="w"?(S.cur?workout():home()):tab=="c"?cycleView():progress();
 }
+const weekOf=(d,st)=>Math.floor((new Date(d+"T12:00:00")-new Date(st+"T12:00:00"))/6048e5)+1;
+function cycleView(){
+ const cl=S.cycles||[],cur=cv==null||!cl[cv]?{s:S.start,e:null}:cl[cv];
+ let h=`<div class="card"><div class="ex-n">Evolução do ciclo</div><div class="meta">${dm(cur.s)}${cur.e?" a "+dm(cur.e):" até hoje"} · melhor série de cada semana (carga×reps)</div>`;
+ if(cl.length)h+=`<div class="row" style="flex-wrap:wrap"><button class="btn ${cv==null?"p":""}" data-a="cyc" data-c="">Ciclo atual</button>${cl.map((c,k)=>`<button class="btn ${cv===k?"p":""}" data-a="cyc" data-c="${k}">Ciclo ${k+1}</button>`).join("")}</div>`;
+ h+=`</div>`;
+ const ds=Object.keys(S.logs).filter(d=>d>=cur.s&&(!cur.e||d<cur.e));
+ let mw=6;ds.forEach(d=>{mw=Math.max(mw,weekOf(d,cur.s))});mw=Math.min(mw,12);let any=false;
+ SEQ.forEach(w=>{if(W[w].cardio)return;let rows="";
+  W[w].e.forEach((x,i)=>{const id=eid(w,i),cells=[];let fw=null,lw=null;
+   for(let k=1;k<=mw;k++){let best=null;ds.forEach(d=>{if(weekOf(d,cur.s)!=k)return;const l=S.logs[d][id];if(!l)return;l.sets.forEach(q=>{if(q&&q.done&&num(q.w)){if(!best||num(q.w)>best.w||(num(q.w)==best.w&&num(q.r)>best.r))best={w:num(q.w),r:num(q.r)||0}}})});cells.push(best);if(best){if(fw==null)fw=best.w;lw=best.w}}
+   if(fw==null)return;any=true;const df=Math.round((lw-fw)*10)/10;
+   rows+=`<tr><td>${esc(x[0])}</td>${cells.map(c=>`<td>${c?c.w+"×"+c.r:"–"}</td>`).join("")}<td style="color:${df>0?"var(--ok)":"var(--mu)"}">${df>0?"+":""}${df}</td></tr>`});
+  if(rows)h+=`<div class="card"><div class="ex-n">Treino ${w} · ${esc(W[w].s)}</div><div class="tw2"><table><tr><th></th>${Array.from({length:mw},(_,k)=>`<th>S${k+1}</th>`).join("")}<th>Δkg</th></tr>${rows}</table></div></div>`});
+ if(!any)h+=`<div class="empty">Ainda não há cargas registradas neste ciclo. Conclua séries com carga para ver a evolução semana a semana.</div>`;
+ return h}
 function home(){const n=nextW();
- let h=`<div class="card"><div class="meta">Começar treino em <b style="color:var(--tx)">${dm(pick)}</b>${pick!=TODAY?' (dia passado)':''}</div><div class="meta" style="margin-top:8px">Próximo da sequência:</div><div class="ex-n" style="margin-bottom:8px">${esc(W[n].t)}</div><button class="btn p" style="width:100%;padding:14px;font-size:16px" data-a="start" data-w="${n}">Começar este treino</button></div><div class="sub" style="margin:4px 0 8px">Ou escolha outro:</div>`;
- SEQ.forEach(w=>{h+=`<button class="btn" style="width:100%;margin-bottom:8px;text-align:left;padding:12px" data-a="start" data-w="${w}">${esc(W[w].t)}</button>`});return h}
+ let h=`<div class="card"><div class="meta">Começar treino em <b style="color:var(--tx)">${dm(pick)}</b>${pick!=TODAY?' (dia passado)':''}</div><div class="meta" style="margin-top:8px">Próximo da sequência:</div><div class="ex-n" style="margin-bottom:8px">Treino ${n} · ${esc(W[n].t)}</div><button class="btn p" style="width:100%;padding:14px;font-size:16px" data-a="start" data-w="${n}">Começar este treino</button></div><div class="sub" style="margin:4px 0 8px">Ou escolha outro:</div>`;
+ SEQ.forEach(w=>{h+=`<button class="btn" style="width:100%;margin-bottom:8px;text-align:left;padding:12px" data-a="start" data-w="${w}"><b>Treino ${w}</b> · ${esc(W[w].t)}</button>`});return h}
 function workout(){
- const c=S.cur,w=W[c.w];let h=`<div class="card" style="border-color:var(--ac)"><div class="ex-n">${esc(w.t)}</div><div class="meta">Treino de ${dm(c.d)} · ${S.fin[c.d]?"finalizado":"em andamento (fica salvo, mesmo se passar da meia-noite)"}</div><div class="row"><button class="btn" data-a="leave">Sair / trocar treino</button></div></div>`;
+ const c=S.cur,w=W[c.w];let h=`<div class="card" style="border-color:var(--ac)"><div class="ex-n">Treino ${c.w} · ${esc(w.t)}</div><div class="meta">${dm(c.d)} · ${S.fin[c.d]?"finalizado":"em andamento (fica salvo, mesmo se passar da meia-noite)"}</div><div class="row"><button class="btn" data-a="leave">Sair / trocar treino</button></div></div>`;
  if(w.cardio){const l=log("cardio");h+=`<div class="card ${l.cd?"done":""}"><div class="ex-n">Cardio moderado</div><div class="meta">30–45 min em ritmo confortável</div><div class="row"><input id="cmin" inputmode="numeric" placeholder="Minutos" value="${l.min||""}"><button class="btn ${l.cd?"p":""}" data-a="cardio">${l.cd?"Concluído":"Marcar concluído"}</button></div></div>`}
  else{const wu=S.wu[c.d]||[];
  h+=`<div class="card"><div class="ex-n">Aquecimento</div><ul class="wu" style="list-style:none;padding:0;margin:6px 0 0">${WARM.map((t,i)=>`<li><label><input type="checkbox" data-a="wu" data-i="${i}" ${wu[i]?"checked":""}>${t}</label></li>`).join("")}</ul></div>`;
@@ -113,8 +130,9 @@ function progress(){
  const b=S.body.slice().sort((a,c)=>a.d<c.d?-1:1);
  let h=`<div class="card"><div class="ex-n">Peso corporal</div><div class="row"><input id="bw" inputmode="decimal" placeholder="kg"><button class="btn p" data-a="bw">Registrar</button></div>`;
  h+=b.length?`<div style="margin-top:8px">${spark(b.map(x=>x.w))}</div>`+b.slice(-8).reverse().map(x=>`<div class="hist"><span>${dm(x.d)}</span><b>${x.w} kg</b></div>`).join(""):`<div class="last">Registre uma vez por semana, sempre no mesmo horário.</div>`;
- const hs=Object.keys(S.hist).sort().reverse().slice(0,12);
- h+=`</div><div class="card"><div class="ex-n">Treinos feitos</div>${hs.length?hs.map(d=>`<div class="hist"><span>${NM[dow(d)]} ${dm(d)}</span><span>${W[S.hist[d]].s} ${S.fin[d]?"✓":"•"}</span></div>`).join(""):'<div class="last">Nenhum treino ainda.</div>'}</div>`;
+ const hd=Object.keys(S.hist).filter(d=>d>=S.start).sort().reverse();let g=null,hh="";
+ hd.forEach(d=>{const wk=weekOf(d,S.start);if(wk!=g){g=wk;hh+=`<div class="meta" style="margin-top:10px"><b style="color:var(--tx)">Semana ${wk}</b></div>`}hh+=`<button class="btn" style="width:100%;margin-top:6px;text-align:left" data-date="${d}">${NM[dow(d)]} ${dm(d)} · Treino ${S.hist[d]} · ${W[S.hist[d]].s} ${S.fin[d]?"✓":"•"}</button>`});
+ h+=`</div><div class="card"><div class="ex-n">Treinos por semana</div><div class="meta">Ciclo atual. Toque para abrir e corrigir.</div>${hh||'<div class="last">Nenhum treino ainda neste ciclo.</div>'}</div>`;
  h+=`<div class="card"><div class="ex-n">Ciclo</div><div class="meta">Início: ${S.start.split("-").reverse().join("/")}. Após 6–8 semanas, reavalie volume, cargas e recuperação.</div><div class="row"><button class="btn" data-a="restart">Reiniciar ciclo hoje</button></div></div>`;
  h+=`<div class="card"><div class="ex-n">Backup</div><div class="meta">Seus dados ficam só neste navegador. Copie o backup de vez em quando.</div><div class="row"><button class="btn" data-a="exp">Copiar backup</button><button class="btn" data-a="imp">Restaurar</button></div></div>`;
  return h}
@@ -158,7 +176,9 @@ document.addEventListener("click",e=>{const b=e.target.closest("button");if(!b)r
  else if(a=="chart")chart(i);
  else if(a=="close")$("md").classList.remove("show");
  else if(a=="bw"){const v=num($("bw").value);if(!v)return;S.body=S.body.filter(x=>x.d!=TODAY);S.body.push({d:TODAY,w:v});save();render()}
- else if(a=="restart"){S.start=TODAY;save();render()}
+ else if(a=="restart")modal(`<div class="ex-n">Reiniciar ciclo?</div><div class="meta">O ciclo atual fica guardado na aba Ciclo e nada é apagado. A contagem de semanas recomeça hoje.</div><div class="row"><button class="btn p" data-a="dorestart">Sim, reiniciar</button></div>`)
+ else if(a=="dorestart"){S.cycles=S.cycles||[];if(S.start<TODAY){S.cycles.push({s:S.start,e:TODAY});S.start=TODAY}cv=null;save();$("md").classList.remove("show");render()}
+ else if(a=="cyc"){cv=b.dataset.c===""?null:+b.dataset.c;render()}
  else if(a=="exp"){const j=JSON.stringify(S);(navigator.clipboard?navigator.clipboard.writeText(j):Promise.reject()).then(()=>{b.textContent="Copiado!"},()=>modal(`<div class="ex-n">Backup</div><textarea rows="8" readonly>${esc(j)}</textarea>`))}
  else if(a=="imp")modal(`<div class="ex-n">Restaurar backup</div><div class="meta">Cole o texto do backup. Isso substitui os dados atuais.</div><textarea id="ib" rows="6"></textarea><div class="row"><button class="btn p" data-a="doimp">Restaurar</button></div>`);
  else if(a=="doimp"){try{const o=JSON.parse($("ib").value);if(!o.logs)throw 0;S=Object.assign({logs:{},body:[],start:TODAY,wu:{},hist:{},fin:{},cur:null,mig:0},o);save();$("md").classList.remove("show");location.reload()}catch(x){$("ib").value="Backup inválido. Cole o texto completo copiado."}}});
