@@ -87,7 +87,7 @@ function strip(){let h="";for(let k=6;k>=0;k--){const d=iso(new Date(Date.now()-
  h+=`<button data-date="${d}" class="${S.cur&&S.cur.d==d?"on":""} ${d==TODAY?"today":""}"><div>${NM[dow(d)]}</div><div style="font-size:15px;font-weight:700">${d.slice(8)}</div><div>${S.fin[d]?"✓":w?"•":"·"}</div><div style="font-size:11px;font-weight:600">${w?"T"+w:"&nbsp;"}</div></button>`}return h}
 function render(){
  const wk=Math.floor((new Date(TODAY)-new Date(S.start))/6048e5)+1;
- $("wk").textContent="Semana "+wk+" do ciclo de 6–8 semanas";
+ $("wk").textContent="Semana "+wk+" do ciclo · versão 5";
  $("days").innerHTML=strip();
  document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t==tab));
  $("main").innerHTML=tab=="w"?(S.cur?workout():home()):tab=="c"?cycleView():progress();
